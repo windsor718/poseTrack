@@ -14,4 +14,5 @@ Note that we never know how many people are actually shown in the camera, so thi
 Given one object in specific camera, by assuming the distance to objects in other cameras represents a likelihood one can estimate the posterior probability to assign the one to objects in other cameras.  
 `integrateCameras.py` is just a wrapper for this project, and actual Bayesian updates and filtering are given by `bayesianUpdates.py`.  
 ## singleCamera
+**You need to download coco.names, yolov3.weights, and yolov3.cfg from https://pjreddie.com/darknet/yolo/ and place it under singleCamera/yolo/.**  
 Contains the code sets of single camera tracking, which gives the tracking information of each camera. The human detections are done by Yolo_v3. The tracking part is currently done by Kalman filtering, which has a competitive tracking redundancy in an occlusion-frequent situation. The sample code of the appearance model is also included, but it is not integrated still. Note that part of the work is referenced and edited from the open-source work from Oxford (https://github.com/ZidanMusk/experimenting-with-sort).  
