@@ -27,13 +27,12 @@ Notes:
 """
 
 import os
-import sys
-import numpy as np
 import cv2
 import pandas as pd
 
 from singleCamera import singleCameraTracking as sct
 from bayesianCameraIntegrator import integrateCameras as ic
+
 
 class MultiCameraTracking(object):
 
@@ -70,20 +69,20 @@ class MultiCameraTracking(object):
         """
         if format == "parquet":
             pathFormat = os.path.join(self.dfDir, "%s.parquet")
-            self.calDfList = [pd.read_parquet(pathFormat%cameraName)
-                            for cameraName in self.cameraList]
+            self.calDfList = [pd.read_parquet(pathFormat % cameraName)
+                              for cameraName in self.cameraList]
         elif format == "csv":
             pathFormat = os.path.join(self.dfDir, "%s.csv")
-            self.calDfList = [pd.read_csv(pathFormat%cameraName, header=0)
-                            for cameraName in self.cameraList]
+            self.calDfList = [pd.read_csv(pathFormat % cameraName, header=0)
+                              for cameraName in self.cameraList]
         else:
-            raise KeyError("data encoding format %s is not supported"%format)
+            raise KeyError("data encoding format %s is not supported" % format)
         return 0
 
     def initializeDict(self):
         """
-        initialize the prior probability dictionary (priorsByCameras) and unique
-        ID disctionary over cameras (uniqueIdsByCameras).
+        initialize the prior probability dictionary (priorsByCameras) and
+        unique ID disctionary over cameras (uniqueIdsByCameras).
         """
         for cameraName in self.cameraList:
             self.priorsByCameras[cameraName] = {}
@@ -92,10 +91,9 @@ class MultiCameraTracking(object):
 
     def __checkConsistency(self):
         if len(self.cameraList) != len(self.calDfList):
-            raise IOError(
-            "the lengthes of self.cameraList and self.dfList must be same. \
-            Make sure to call registerDataFrame() after you registered \
-            all cameras by registerCamera()")
+            raise IOError("the lengthes of self.cameraList and self.dfList \
+            must be same. Make sure to call registerDataFrame() \
+            after you registered all cameras by registerCamera()")
         else:
             return 0
 
@@ -107,11 +105,12 @@ class MultiCameraTracking(object):
             cameraNameList (list): list of camera names
             format (str): parquet or csv.
         """
-        ret = [self.registerCamera(cameraName) for cameraName in cameraNameList]
+        ret = [self.registerCamera(cameraName)
+               for cameraName in cameraNameList]
         ret = self.registerDataFrame(format=format)
         ret = self.initializeDict()
         ret = self.__checkConsistency()
-        return 0
+        return ret
 
     def readImageFromPath(self, imagePath):
         """
@@ -137,7 +136,7 @@ class MultiCameraTracking(object):
         Returns:
             cv2.imageObject
         """
-        imageName = self.imageFmt%(cameraName, sceneNumber)
+        imageName = self.imageFmt % (cameraName, sceneNumber)
         imagePath = os.path.join(self.imageDir, imageName)
         image = self.readImageFromPath(imagePath)
         return image
@@ -154,14 +153,19 @@ class MultiCameraTracking(object):
         Returns:
             list: list of image points (bottom center X and Y) list.
             list: id list (camera-specific, not universal)
+
+        Notes:
+            BMCT-stand-alone version. Decided not to use with poseDetection.
+            Use this func. only if you want to track people
+            without pose Detection.
         """
         sctInstance = self.cameraDict[cameraName]
         trackers = sctInstance.getScene(image)
         ids = []
         imagePoints = []
         for idx, d in enumerate(trackers):
-            bottomCenterX = (d[0] + d[2])/2. #iamge coordinates
-            bottomCenterY = (d[1] + d[3])/2. #image coordinates
+            bottomCenterX = (d[0] + d[2])/2.  # iamge coordinates
+            bottomCenterY = (d[1] + d[3])/2.  # image coordinates
             id = d[4]
             ids.append(id)
             imagePoints.append([bottomCenterX, bottomCenterY])
@@ -177,7 +181,7 @@ class MultiCameraTracking(object):
             imagePointsList.append(imagePoints)
         return imagePointsList, idsList
 
-    def multiCameraTracking(self, sceneNumber):
+    def multiCameraTracking(self, imagePointsList, idsList):
         """
         Integrate the information from the singleCameraTracking and track the
         human objects using multiple cameras.
@@ -190,7 +194,7 @@ class MultiCameraTracking(object):
                 multiple cameras. the dictionary has the structure like:
                 {cameraName:camera-specific-id:uniqueId}
         """
-        imagePointsList, idsList = self.__iterCameras(sceneNumber)
+        # imagePointsList, idsList = self.__iterCameras(sceneNumber)
         realPointsByCameras, idsByCameras = ic.CreateSceneByCameras(
                                     self.cameraList, imagePointsList,
                                     idsList, self.calDfList
@@ -205,21 +209,25 @@ class MultiCameraTracking(object):
 
 ###
 
+
 def tester(format="parquet"):
     """
     For testing purpose
 
     Notes:
         Note that the resolution of the image-real world coordination table
-        (created by codes under 3dsmax/) is not high enough because this is just
-        a testing purpose. This will cause a slight degradation of the result.
+        (created by codes under 3dsmax/) is not high enough because this is
+        just a testing purpose.
+        This will cause a slight degradation of the result.
     """
-    cameraList = ["PhysCamera001","PhysCamera002",
-                "PhysCamera003","PhysCamera004"]
+    cameraList = ["PhysCamera001", "PhysCamera002",
+                  "PhysCamera003", "PhysCamera004"]
     inst = MultiCameraTracking()
     ret = inst.initialize(cameraList, format=format)
     uniqueIdsByCameras = inst.multiCameraTracking(0)
     print(uniqueIdsByCameras)
+    return ret
+
 
 if __name__ == "__main__":
     tester(format="csv")

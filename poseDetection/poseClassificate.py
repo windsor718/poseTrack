@@ -11,6 +11,7 @@ Todo:
     - cooperate with tracking system
 """
 
+
 def loadLog(path):
     """
     load log.json file.
