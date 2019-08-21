@@ -20,6 +20,8 @@ class PoseTrack(object):
         self.cameraList = ["PhysCamera001", "PhysCamera002"]
 
         self.cacheFormat = "parquet"
+
+    def initialize(self):
         self.tracker.initialize(self.cameraList, format=self.cacheFormat)
 
     def poseTrack(self, sceneNumber):

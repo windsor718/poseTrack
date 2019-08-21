@@ -11,14 +11,12 @@ Notes:
         ***List: list
         ***By??? : dictionary whose key is ??? and value is *** {???:***}.
 """
-import sys
-import os
 import itertools
 import collections
 import numpy as np
-import pandas as pd
 import json
 from . import bayesianUpdate
+
 
 def locatePointsInReal(imageX, imageY, df):
     """
@@ -40,13 +38,14 @@ def locatePointsInReal(imageX, imageY, df):
     """
     imageX_grid = df["imageX"].values
     imageX_snapped = imageX_grid[np.argmin((imageX_grid - imageX)**2)]
-    df_snapped = df[df.imageX==imageX_snapped]
+    df_snapped = df[df.imageX == imageX_snapped]
     imageY_grid = df_snapped.imageY.values
     imageY_snapped = imageY_grid[np.argmin((imageY_grid - imageY)**2)]
-    df_snapped = df_snapped[df.imageY==imageY_snapped]
+    df_snapped = df_snapped[df.imageY == imageY_snapped]
     realX = df_snapped["realX"].values[0]
     realY = df_snapped["realY"].values[0]
     return [realX, realY]
+
 
 def locateSceneInReal(imagePoints, df):
     """
@@ -63,8 +62,9 @@ def locateSceneInReal(imagePoints, df):
         just a wrapper of the locatePointsInReal(**args).
     """
     realPoints = [locatePointsInReal(point[0], point[1], df)
-                for point in imagePoints]
+                  for point in imagePoints]
     return realPoints
+
 
 def CreateSceneByCameras(cameraList, imagePointsList, idsList, dfList):
     """
@@ -72,7 +72,7 @@ def CreateSceneByCameras(cameraList, imagePointsList, idsList, dfList):
 
     Args:
         cameraList (list): list of camera name
-        imagePointsList (list): list of points (list) in an image of each camera
+        imagePointsList (list): points (list) in an image of each camera
         idsList (list): list of id (list) in an image of each camera
 
     Returns:
@@ -84,14 +84,15 @@ def CreateSceneByCameras(cameraList, imagePointsList, idsList, dfList):
         Note that points and ids are lists.
     """
     realPointsList = [locateSceneInReal(imagePoints, dfList[idx])
-                        for idx, imagePoints in enumerate(imagePointsList)]
+                      for idx, imagePoints in enumerate(imagePointsList)]
     realPointsByCameras = dict(zip(cameraList, realPointsList))
 
     idsByCameras = dict(zip(cameraList, idsList))
     return realPointsByCameras, idsByCameras
 
+
 def integrate(cameraList, realPointsByCameras, idsByCameras, priorsByCameras,
-                uniqueIdsByCameras, threshold=0.9, startCount=0):
+              uniqueIdsByCameras, threshold=0.9, startCount=0):
     """
     Integrate camera-specific ids to unique integrated id.
 
@@ -124,11 +125,12 @@ def integrate(cameraList, realPointsByCameras, idsByCameras, priorsByCameras,
                                                 realPointsByCameras, uniques,
                                                 priorsByCameras)
     uniqueIdsByCameras, count = reidentify(uniqueIdsByCameras, uniques,
-                                            startCount=startCount)
+                                           startCount=startCount)
     return uniqueIdsByCameras, count
 
+
 def classificate(cameraPair, idsByCameras, realPointsByCameras,
-                    uniques, priorsByCameras, threshold=0.9):
+                 uniques, priorsByCameras, threshold=0.9):
     """
     In a given camera pair,
     classify the people in two images by Bayesian update.
@@ -160,11 +162,11 @@ def classificate(cameraPair, idsByCameras, realPointsByCameras,
                   ***
                  }
     """
-    #base camera
+    # base camera
     camera_base = cameraPair[0]
     ids_base = idsByCameras[camera_base]
     realPoints_base = realPointsByCameras[camera_base]
-    #opponent camera; objects to be assigned
+    # opponent camera; objects to be assigned
     camera_opponent = cameraPair[1]
     ids_opponent = idsByCameras[camera_opponent]
     realPoints_opponent = np.array(realPointsByCameras[camera_opponent]).T
@@ -181,9 +183,10 @@ def classificate(cameraPair, idsByCameras, realPointsByCameras,
                         posteriorDict, uniques, threshold=threshold)
     return priorsByCameras, uniques
 
+
 def update(camera_base, id_base, x_base, y_base,
-                camera_opponent, ids_opponent, xs_opponent, ys_opponent,
-                priorsByCameras):
+           camera_opponent, ids_opponent, xs_opponent, ys_opponent,
+           priorsByCameras):
     """
     Update prior probabilities to posterior ones.
 
@@ -193,7 +196,8 @@ def update(camera_base, id_base, x_base, y_base,
         x_base (float): a real x coordinate of id_base
         y_base (float): a real y coordinate of id_base
         camera_opponent (str): opponent camera name (see Notes)
-        ids_oppnnent (str): multiple camera-specific-ids from a image of camera_opponent
+        ids_oppnnent (str): multiple camera-specific-ids
+                            from a image of camera_opponent
         xs_opponent (list): multiple x coordinates of id_oppnnent
         ys_opponent (list): multiple y coordinates of id_oppnnent
         priorsByCameras (dict): dictionary of prior probabilities
@@ -206,14 +210,15 @@ def update(camera_base, id_base, x_base, y_base,
               {camera-specific-id:posteriorProbability}
 
     Notes:
-        We select one id from camera_base. Then we calculate posterior probability
+        We select one id from camera_base.
+        Then we calculate posterior probability
         using bayesian update for all ids in an image from camera_opponent.
 
     ToDo:
         Eliminate some of the for loop/ifelse statement.
     """
-    distances_sq = (xs_opponent-x_base)**2 \
-                    + (ys_opponent-y_base)**2
+    distances_sq = (xs_opponent-x_base)**2 + \
+                   (ys_opponent-y_base)**2
     distances = distances_sq**(0.5)
     if len(priorsByCameras) == 0:
         initProbs = bayesianUpdate.initialize(ids_opponent)
@@ -231,13 +236,14 @@ def update(camera_base, id_base, x_base, y_base,
     posteriorDict = dict(zip(ids_opponent, updates))
     # update prior probability by assigning posterior one for the next step
     #priorsByCameras[camera_base][id_base][camera_opponent] = posteriorDict
-    if not id_base in priorsByCameras[camera_base].keys():
+    if id_base not in priorsByCameras[camera_base].keys():
         priorsByCameras[camera_base][id_base] = {}
     priorsByCameras[camera_base][id_base][camera_opponent] = posteriorDict
     return priorsByCameras, posteriorDict
 
+
 def match(camera_base, id_base, camera_opponent,
-            posteriorDict, uniques, threshold=0.9):
+          posteriorDict, uniques, threshold=0.9):
     """
     Get ids from ids_oppnnent whose probability is more than thresold.
     Then create a group (list) of those matched ids.
@@ -258,11 +264,11 @@ def match(camera_base, id_base, camera_opponent,
         the maximum-probability-id is chosen.
     """
     matchIds = [k for k, v in posteriorDict.items() if v > threshold]
-    id_base_cai = "%s_%s"%(camera_base,id_base) # cai: camera and id
+    id_base_cai = "%s_%s" % (camera_base, id_base)  # cai: camera and id
     if len(matchIds) > 0:
         probs = [posteriorDict[key] for key in matchIds]
-        oId_key = matchIds[np.argmax(probs)] # most likely opponent id
-        id_opponent_cai = "%s_%s"%(camera_opponent,oId_key)
+        oId_key = matchIds[np.argmax(probs)]  # most likely opponent id
+        id_opponent_cai = "%s_%s " % (camera_opponent, oId_key)
         misscount = 0
         for group in uniques:
             if id_base_cai in list(set(group)):
@@ -311,12 +317,13 @@ def reidentify(uniqueIdsByCameras, uniques, startCount=0):
     """
     count = startCount
     for group in uniques:
-        nextUniqueId = "u%d"%count
+        nextUniqueId = "u%d" % count
         newUniqueId, count = getUniqueId(group, uniqueIdsByCameras,
-                                            nextUniqueId, count)
+                                         nextUniqueId, count)
         uniqueIdsByCameras = assignUniqueId(group, uniqueIdsByCameras,
                                             newUniqueId)
     return uniqueIdsByCameras, count
+
 
 def getUniqueId(group, uniqueIdsByCameras, nextUniqueId, count):
     """
@@ -334,7 +341,7 @@ def getUniqueId(group, uniqueIdsByCameras, nextUniqueId, count):
         int: next count
     """
     previousUniqueIds = []
-    for id_cai in group: #cai: camera and id
+    for id_cai in group:  # cai: camera and id
         cameraName, id = id_cai.split("_")
         if id in uniqueIdsByCameras[cameraName].keys():
             uniqueId = uniqueIdsByCameras[cameraName][id]
@@ -361,7 +368,7 @@ def assignUniqueId(group, uniqueIdsByCameras, uniqueId):
     Returns:
         dict: updated uniqueIdsByCameras
     """
-    for id_cai in group: #cai: camera and id
+    for id_cai in group:  # cai: camera and id
         cameraName, id = id_cai.split("_")
         uniqueIdsByCameras[cameraName][id] = uniqueId
         uniqueIdsByCameras[cameraName][id]
@@ -379,5 +386,5 @@ def assignUniqueId(group, uniqueIdsByCameras, uniqueId):
         Returns:
             NoneType
         """
-        with open("%s_%s.json",mode):
+        with open("%s_%s.json", mode):
             json.dump(priorsByCameras[camera_base])

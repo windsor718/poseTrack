@@ -1,5 +1,5 @@
-# Pass: Multi Camera Tracking System using Bayesian filtering.  
-Camera calibration with the 3dsmax and a multi camera intregration with Bayesian filtering.  
+# Multi Camera Tracking System using Bayesian filtering.  
+Camera calibration with the 3dsmax and a multi camera integration with Bayesian filtering.  
 This module sets are based on Python 3.6 or later.    
 **Note that the sample datasets' resolution is very coarse (due to the limitation of data size in repo.), so one should allow the inaccuracy of the results in some extent. The real operation will be conducted with way higher resolution, so this inaccuracy will not happen.**
 ## 3dsmax  
