@@ -1,7 +1,15 @@
 import numpy as np
 import requests
+import time
 import json
+import cv2
 
+"""
+Todo:
+    - calculate average confience score
+    - filter score
+    - cooperate with tracking system
+"""
 
 def loadLog(path):
     """
@@ -26,14 +34,14 @@ def getPose(imgPath, url="http://localhost:8000/api/posedetect"):
         imgPath(str): path to an image
 
     Returns:
-        dict: pose
+        dict: poses
     """
-    result = requests.post(url, data={"path": "pickup_100.jpg"})
+    result = requests.post(url, data={"path": imgPath})
     if result.status_code == 404:
         raise IOError("404 Error. Check if API server is running.")
     else:
-        pose = json.loads(result.text)
-    return pose
+        poses = json.loads(result.text)
+    return poses
 
 
 def detect(angles, buffer=10):
@@ -41,7 +49,7 @@ def detect(angles, buffer=10):
     detect pre-defined actions. higher wrapper.
 
     Args:
-        angles(dict): temporal sequence of getAngles
+        angles(list): temporal sequence of getAngles
 
     Returns:
         dict
@@ -49,10 +57,10 @@ def detect(angles, buffer=10):
     if len(angles) < buffer:
         buffer = len(angles)
 
-    armpitR = np.array([d["armpitR"] for d in angles])[-1*buffer::]
-    armpitL = np.array([d["armpitL"] for d in angles])[-1*buffer::]
-    elbowR = np.array([d["elbowR"] for d in angles])[-1*buffer::]
-    elbowL = np.array([d["elbowL"] for d in angles])[-1*buffer::]
+    armpitR = np.array([d["armpitAngleR"] for d in angles])[-1*buffer::]
+    armpitL = np.array([d["armpitAngleL"] for d in angles])[-1*buffer::]
+    elbowR = np.array([d["elbowAngleR"] for d in angles])[-1*buffer::]
+    elbowL = np.array([d["elbowAngleL"] for d in angles])[-1*buffer::]
 
     actions = dict(reachingR=detectReaching(armpitR, elbowR),
                    reachingL=detectReaching(armpitL, elbowL),
@@ -61,63 +69,64 @@ def detect(angles, buffer=10):
     return actions
 
 
-def getAnglesTimeSequence(log, poseJson):
+def getAnglesTimeSequence(log, keypoints):
     """
     get and append a rescent pose of a person.
 
     Args:
-        log(list): list of dictionary of poses.
-        poseJson(dict): dictionary of rescent pose information
+        log(list): list of dictionary of pose angles.
+        keypoints(list): dictionary of rescent pose information
 
     Returns:
         list
     """
-    rescentPose = getAngles(poseJson)
+    rescentPose = getAngles(keypoints)
     log.append(rescentPose)
+    print(log[-1])
     return log
 
 
-def getAngles(poseJson):
+def getAngles(keypoints):
     """
     detect actions of a person.
 
     Args:
-        poseJson(dict): dictionary containing pose information
+        keypoints(dict): dictionary containing pose information
 
     Returns:
         dict: list of pre-defined angles
     """
-    hipR = getCoordinates(poseJson, "rightHip")
-    hipL = getCoordinates(poseJson, "leftHip")
-    shoulderR = getCoordinates(poseJson, "rightShoulder")
-    shoulderL = getCoordinates(poseJson, "leftShoulder")
-    elbowR = getCoordinates(poseJson, "rightElbow")
-    elbowL = getCoordinates(poseJson, "leftElbow")
-    wristR = getCoordinates(poseJson, "rightWrist")
-    wristL = getCoordinates(poseJson, "leftWrist")
+    hipR = getCoordinates(keypoints, "rightHip")
+    hipL = getCoordinates(keypoints, "leftHip")
+    shoulderR = getCoordinates(keypoints, "rightShoulder")
+    shoulderL = getCoordinates(keypoints, "leftShoulder")
+    elbowR = getCoordinates(keypoints, "rightElbow")
+    elbowL = getCoordinates(keypoints, "leftElbow")
+    wristR = getCoordinates(keypoints, "rightWrist")
+    wristL = getCoordinates(keypoints, "leftWrist")
 
     armpitR = calcArmpitAngle(hipR, shoulderR, elbowR)
     armpitL = calcArmpitAngle(hipL, shoulderL, elbowL)
     elbowAglR = calcElbowAngle(shoulderR, elbowR, wristR)
     elbowAglL = calcElbowAngle(shoulderL, elbowL, wristL)
-    return {"armpitR": armpitR, "armpitL": armpitL,
+    return {"armpitAngleR": armpitR, "armpitAngleL": armpitL,
             "elbowAngleR": elbowAglR, "elbowAngleL": elbowAglL}
 
 
-def getCoordinates(poseJson, part):
+def getCoordinates(keypoints, part):
     """
     get list of xy coordinate of the specified part
 
     Args:
-        poseJson(dict): pose information
+        keypoints(dict): pose information
         part(str): pose name
 
     Returns:
         list: coordinate [x, y]
     """
     try:
-        x = poseJson[part]["x"]
-        y = poseJson[part]["y"]
+        x = [d["position"]["x"] for d in keypoints if d["part"] == part][0]
+        y = [d["position"]["y"] for d in keypoints if d["part"] == part][0]
     except(KeyError):
         x = np.nan
         y = np.nan
@@ -170,8 +179,8 @@ def calcAngle(p1, p2, p3):
     """
     vec1 = p1 - p2
     vec2 = p3 - p2
-    cos = (vec1*vec2).sum()/((vec1**2).sum()+(vec2**2).sum())
-    angle = np.arccos(cos)
+    cos = (vec1*vec2).sum()/(np.sqrt((vec1**2).sum())*np.sqrt((vec2**2).sum()))
+    angle = np.arccos(cos)*57.2958
     return angle
 
 
@@ -188,10 +197,10 @@ def detectReaching(armpitAngles, elbowAngles, armpitThsld=30, elbowThsld=90):
     """
     armpitDiff = getAveragedDifference(armpitAngles)
     elbowDiff = getAveragedDifference(elbowAngles)
-    if armpitDiff and \
-       elbowDiff and \
+    if armpitDiff == 1 and \
+       elbowDiff == 1and \
        armpitAngles[-1] > armpitThsld and \
-       elbowAngles > elbowThsld:
+       elbowAngles[-1] > elbowThsld:
         result = True
     else:
         result = False
@@ -212,27 +221,62 @@ def detectDisengaging(armpitAngles, elbowAngles,
     """
     armpitDiff = getAveragedDifference(armpitAngles)
     elbowDiff = getAveragedDifference(elbowAngles)
-    if not armpitDiff and \
-       not elbowDiff and \
+    if armpitDiff == -1 and \
+       elbowDiff == -1 and \
        armpitAngles[-1] < armpitThsld and \
-       elbowAngles < elbowThsld:
+       elbowAngles[-1] < elbowThsld:
         result = True
     else:
         result = False
     return result
 
 
-def getAveragedDifference(array, d=2):
+def getAveragedDifference(array, d=2, thsld=5):
     """
     split array and get difference between two chunks.
 
     Args:
         array(np.ndarray): input array
         d(int): default 2, an input array will be splitted into this number.
+        thsld(int): default 5, an threshold value to say "increase/decrease"
 
     Returns:
         bool: True if increase False if decrease or equal
     """
-    window = len(array)/d
+    window = int(len(array)/d)
     diff = np.nanmean(array[-1*window::]) - np.nanmean(array[0:window])
-    return True if diff > 0 else False
+    if thsld < diff:
+        return 1
+    elif -1*thsld < diff < thsld:
+        return 0
+    else:
+        return -1
+
+
+def test():
+    """
+    Tester
+    """
+    fileFmt = "/mnt/c/Users/winze/Downloads/poseNet/src/jpg/pickup_%03d.jpg"
+    log = []
+    for i in range(0, 150):
+        file = fileFmt % i
+        print(file)
+        poses = getPose(file)
+        log = getAnglesTimeSequence(log, poses[0]["keypoints"])
+        actions = detect(log)
+        time.sleep(1)
+        img = cv2.imread(file.split(".")[0]+"_detected.png")
+        offset = 100
+        for action in actions:
+            if actions[action]:
+                print(action)
+                cv2.putText(img, action, (20, offset),
+                            cv2.FONT_HERSHEY_SIMPLEX, 2.0,
+                            (255, 255, 255), thickness=2)
+                offset = offset + 100
+        cv2.imwrite(file.split(".")[0]+"_labeled.png", img)
+        print(actions)
+
+
+test()

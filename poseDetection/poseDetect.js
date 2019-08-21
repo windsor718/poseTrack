@@ -31,7 +31,7 @@ async function estimatePoseOnImage(net, imageElement,
   const pose = await net.estimateMultiplePoses(imageElement, {
             flipHolizaontal: flipHorizontal,
             maxDetections: maxDetections,
-            scoreThsld: scoreThsld}
+            scoreThreshold: scoreThsld}
             );
   return pose;
 }
@@ -125,16 +125,15 @@ exports.getPose = async function getPose(net, path) {
   ctx.drawImage(img, 0, 0);
   const poses = await estimatePoseOnImage(net, canvas,
                                           flipHorizontal, outputStride);
-  const pose = poses[0] // update later
-  return pose.keypoints
-  /*
-  drawBodyLine(ctx, pose);
+  var pose = poses[0]
+  await drawBodyLine(ctx, pose);
 
-  var out = fs.createWriteStream('./Downloads/poseNet/out/'+fillIdx+'.png'),
-    stream = canvas.pngStream();
+  var out = await fs.createWriteStream(path.split('.')[0]+'_detected.png'),
+    stream = await canvas.pngStream();
 
-  stream.on('data', function(chunk){
+  await stream.on('data', await function(chunk){
     out.write(chunk);
   });
-  */
+
+  return poses
 }

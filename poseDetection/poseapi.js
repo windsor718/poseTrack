@@ -12,7 +12,7 @@ app.use(bodyParser.json());
 //initialization
 async function init() {
   //load model
-  console.log("Loading model...")
+  console.log("Loading network...")
   const net = await poseDetect.loadModel()
   console.log("Completed.")
   return net
