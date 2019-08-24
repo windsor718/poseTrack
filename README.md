@@ -1,8 +1,9 @@
-# PoseTrack - Bayesian Multi Camera racking and Pose Detection  
+# PoseTrack - Bayesian Multi Camera Tracking and Pose Detection  
 This code sets:  
 - tracks person from single camera with Kalman filtering.  
 - estimate poses of people on that image. Detect pre-defined actions.   
 - associate and integrate one scene from multiple cameras with Bayesian filtering.  
+
 Each person on images will be associated with one global unique id over multiple cameras.  
 The ids, actions, frame numbers, and other associated information are stored into a RDB with sqlite3.  
 
@@ -39,7 +40,7 @@ node poseapi.js
 The script firstly load a model from the google repositry. This will take minutes depending on a model size.  
 In default the script uses **ResNet50** architecture with 801 input resolution and 16 output stride (maximum accuracy expected).  
 After you load the model, the server is ready to use API!  
-The server defines POST communication. Use POST to get the result from this server. The server listens localhost:8000 in default. Change this if needed.  
+The server defines POST communication. Use POST to get results from this server. The server listens localhost:8000 in default. Change this if needed.  
 The request url is in default: http://localhost:8000/api/posedetect.
 In python:   
 ```python

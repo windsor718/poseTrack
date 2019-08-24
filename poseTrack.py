@@ -1,5 +1,7 @@
 import numpy as np
 import cv2
+import json
+import sqlite3
 from BMCT import bmct
 from poseDetection import poseclassificate as ps
 
@@ -18,11 +20,36 @@ class PoseTrack(object):
         self.imgPathFmt = "./images/"
         self.tracker = bmct.MultiCameraTracking()
         self.cameraList = ["PhysCamera001", "PhysCamera002"]
-
+        self.dbName = "logs.db"
+        self.columns = "ID INTEGER, uID STRING, action STRING,\
+                        date STRING, sceneNumber INTEGER, priors STRING"
+        self.placeHolder = "(?, ?, ?, ?, ?, ?)"
         self.cacheFormat = "parquet"
+        con = sqlite3.connect(self.dbName)
+        con.close()
 
     def initialize(self):
         self.tracker.initialize(self.cameraList, format=self.cacheFormat)
+        for camera in self.cameraList:
+            self.createTable(camera, )
+
+    def createTable(self, tableName, tableContent):
+        """
+        create a new table in a database if not exists.
+
+        Args:
+            tableName (str): table name
+            tableContent (str): column name and data type in SQL grammer
+
+        Returns:
+            None
+        """
+        con = sqlite3.connect(self.dbName)
+        cursor = con.cursor()
+        command = "CREATE TABLE IF NOT EXISTS %s(%s)"
+        cursor.execute(command)
+        con.commit()
+        con.close()
 
     def poseTrack(self, sceneNumber):
         imagePointsList, idsList = self.__iterCameras(sceneNumber)
@@ -98,6 +125,27 @@ class PoseTrack(object):
             imagePoints.append(ps.getFootPoint(poses[poseIdx]["keypoints"]))
             self.storeActionData(actions)
         return ids, imagePoints
+
+    def storeActionData(self, id, actions, cameraName, date, sceneNumber):
+        """
+        store action data into database as JSON string format.
+
+        Args:
+            actions (dict): action dictionary {action:bool}
+            cameraName (str): cameraName (table name)
+
+        Returns:
+            None
+        """
+        con = sqlite3.connect(self.dbName)
+        cursor = con.cursor()
+        command = "INSERT INTO %s VALUES %s" % (cameraName, self.placeHolder)
+        actions_str = json.dumps(actions)
+        date_str = date.strf("%Y-%m-%d-%H:%M")
+        holder = (id, "temp", actions_str, date_str, sceneNumber, "temp")
+        cursor.execute(command, holder)
+        con.commit()
+        con.close()
 
     def __iterCameras(self, sceneNumber):
         idsList = []

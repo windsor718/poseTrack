@@ -12,6 +12,7 @@ Notes:
         ***By??? : dictionary whose key is ??? and value is *** {???:***}.
 """
 import itertools
+import sqlite3
 import collections
 import numpy as np
 import json
@@ -121,7 +122,8 @@ def integrate(cameraList, realPointsByCameras, idsByCameras, priorsByCameras,
     cameraPairs = itertools.permutations(cameraList, 2)
     uniques = []
     for cameraPair in cameraPairs:
-        priorsByCameras, uniques = classificate(cameraPair, idsByCameras,
+        priorsByCameras, uniques = classificate(sceneNumber, cameraPair,
+                                                idsByCameras,
                                                 realPointsByCameras, uniques,
                                                 priorsByCameras)
     uniqueIdsByCameras, count = reidentify(uniqueIdsByCameras, uniques,
@@ -129,7 +131,7 @@ def integrate(cameraList, realPointsByCameras, idsByCameras, priorsByCameras,
     return uniqueIdsByCameras, count
 
 
-def classificate(cameraPair, idsByCameras, realPointsByCameras,
+def classificate(sceneNumber, cameraPair, idsByCameras, realPointsByCameras,
                  uniques, priorsByCameras, threshold=0.9):
     """
     In a given camera pair,
@@ -174,6 +176,8 @@ def classificate(cameraPair, idsByCameras, realPointsByCameras,
         id_base = ids_base[idx]
         x_base = realPoints_base[idx][0]
         y_base = realPoints_base[idx][1]
+        priors = getPriorsFromDataBase(camera_base, id_base,
+                                       camera_opponent, ids_opponent)
         priorsByCameras, posteriorDict = update(
                     camera_base, id_base, x_base, y_base,
                     camera_opponent, ids_opponent, realPoints_opponent[0],
@@ -184,7 +188,57 @@ def classificate(cameraPair, idsByCameras, realPointsByCameras,
     return priorsByCameras, uniques
 
 
-def update(camera_base, id_base, x_base, y_base,
+def getPriorsFromDataBase(sceneNumber, cameraNameList, idsByCameras,
+                          db="priors.db"):
+    """
+    get prior data from database.
+    """
+    priorsByCameras = dict()
+    con = sqlite3.connect(db)
+    cursor = con.cursor()
+    for cameraName in cameraNameList:
+        ids_base = idsByCameras[cameraName]
+        priorsByCameras[cameraName] = dict()
+        for id_base in ids_base:
+            command = "SELECT prior, opponentID from %s " + \
+                      "where sceneNumber == %d and baseID == %d " \
+                      % (cameraName, sceneNumber, id_base)
+            try:
+                cursor.execute(command)
+                data = cursor.fetchall()
+                priorsByCameras[cameraName][id_base] = dict()
+                cursor.close()
+            except(sqlite3.Error):
+                data = []
+            for d in data:
+                cName_op = d[0]
+                id_op = d[1]
+                prior = d[2]
+                if cName_op not in priorsByCameras[cameraName][id_base].keys():
+                    priorsByCameras[cameraName][id_base][cName_op] = dict()
+                priorsByCameras[cameraName][id_base][cName_op][id_op] = prior
+    con.close()
+    return priorsByCameras
+
+
+def storePriorsIntoDataBase(sceneNumber, priorsByCameras,
+                            date, db="priors.db"):
+    con = sqlite3.connect(db)
+    cursor = con.cursor()
+    for baseCamera, subDict1 in priorsByCameras.items():
+        for baseID, subDict2 in subDict1.items():
+            for oppCamera, subDict3 in subDict2.items():
+                for oppID, prior in subDict3.items():
+                    command = "INSERT INTO %s VALUES (?,?,?,?,?,?)" \
+                               % (baseCamera)
+                    holder = (date, sceneNumber, baseID,
+                              oppCamera, oppID, prior)
+                    cursor.execute(command, holder)
+                    cursor.commit()
+                    cursor.close()
+    con.close()
+
+def update(sceneNumber, camera_base, id_base, x_base, y_base,
            camera_opponent, ids_opponent, xs_opponent, ys_opponent,
            priorsByCameras):
     """
@@ -235,10 +289,11 @@ def update(camera_base, id_base, x_base, y_base,
                                                 distances)
     posteriorDict = dict(zip(ids_opponent, updates))
     # update prior probability by assigning posterior one for the next step
-    #priorsByCameras[camera_base][id_base][camera_opponent] = posteriorDict
+    # priorsByCameras[camera_base][id_base][camera_opponent] = posteriorDict
     if id_base not in priorsByCameras[camera_base].keys():
         priorsByCameras[camera_base][id_base] = {}
     priorsByCameras[camera_base][id_base][camera_opponent] = posteriorDict
+    storePriorsIntoDataBase(sceneNumber, priorsByCameras)
     return priorsByCameras, posteriorDict
 
 
@@ -325,6 +380,42 @@ def reidentify(uniqueIdsByCameras, uniques, startCount=0):
     return uniqueIdsByCameras, count
 
 
+def getUniqueIdsByCamerasFromDataBase(sceneNumber, date, cameraNameList,
+                                      idsByCameras, db="uniqueID.db"):
+    con = sqlite3.connect(db)
+    cursor = con.cursor()
+    uniqueIdsByCameras = dict()
+    for cameraName in cameraNameList:
+        uniqueIdsByCameras[cameraName] = dict()
+        ids = idsByCameras[cameraName]
+        for id in ids:
+            command = "SELECT uID from %s " + \
+                      "where date == %s sceneNumber == %d and cID == %d" \
+                      % (cameraName, date, sceneNumber, id)
+            cursor.execute(command)
+            out = cursor.fetch()[0]
+            print(out)
+            uniqueIdsByCameras[cameraName][id] = out
+            cursor.close()
+    con.close()
+    return uniqueIdsByCameras
+
+
+def storeUniqueIdsIntoDataBase(sceneNumber, date,
+                               uniqueIdsByCameras, db="uniqueID.db"):
+    con = sqlite3.connect(db)
+    cursor = con.cursor()
+    for baseCamera, subDict1 in uniqueIdsByCameras.items():
+        for baseID, uID in subDict1.items():
+            command = "INSERT INTO %s VALUES (?,?,?,?,?,?)" \
+                       % (baseCamera)
+            holder = (date, sceneNumber, baseID, uID)
+            cursor.execute(command, holder)
+            cursor.commit()
+            cursor.close()
+    con.close()
+
+
 def getUniqueId(group, uniqueIdsByCameras, nextUniqueId, count):
     """
     Based on the previous classification, define whether getting new unique id
@@ -355,6 +446,7 @@ def getUniqueId(group, uniqueIdsByCameras, nextUniqueId, count):
         uniqueId = nextUniqueId
         count = count + 1
     return uniqueId, count
+
 
 def assignUniqueId(group, uniqueIdsByCameras, uniqueId):
     """

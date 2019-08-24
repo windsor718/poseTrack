@@ -5,14 +5,14 @@ Bayesiam Multi Camera Tracking (BMCT)
 Master class for the multi camera tracking system
 
 Usage:
-    1. create an instance. `instance = MultiCameraTracking()`
-    1.5. (optional) edit instance variables for your specific case.
-    2. register all cameras. `instance.registerCamera("camera001")`
+    1. create an instance. `ist = MultiCameraTracking()`
+    1.5. (optional) edit ist variables for your specific case.
+    2. register all cameras. `ist.registerCamera("camera001")`
     3. read pre-calculated image-real coordinates table and initialize dict.
-        `instance.registerDataFrame()`
-        `instance.initializeDict()`
-    (You can do 2. and 3. once by calling instance.initialize(cameraNameList).)
-    4. get integrated unique ids. `instance.multiCameraTracking(1)`
+        `ist.registerDataFrame()`
+        `ist.initializeDict()`
+    (calling ist.initialize(cameraNameList) will do 2. and 3. at once.)
+    4. get integrated unique ids. `ist.multiCameraTracking(1)`
     5. repeat 4.
 
 Notes:
