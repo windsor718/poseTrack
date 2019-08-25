@@ -30,15 +30,18 @@ import os
 import cv2
 import pandas as pd
 
-from singleCamera import singleCameraTracking as sct
-from bayesianCameraIntegrator import integrateCameras as ic
+from . import singleCameraTracking as sct
+from . import integrateCameras as ic
 
 
 class MultiCameraTracking(object):
 
-    def __init__(self):
+    def __init__(self, useLocation=False):
         self.cameraDict = {}
         self.cameraList = []
+        self.useLocation = useLocation
+        if self.useLocation:
+            sys.stderr.write("Location-based integration is beta version.")
         self.imageDir = os.path.join(os.getcwd(), "images/view")
         self.imageFmt = "%s_%d.jpg"
         self.dfDir = os.path.join(os.getcwd(), "3dsmax")
@@ -107,9 +110,10 @@ class MultiCameraTracking(object):
         """
         ret = [self.registerCamera(cameraName)
                for cameraName in cameraNameList]
-        ret = self.registerDataFrame(format=format)
         ret = self.initializeDict()
-        ret = self.__checkConsistency()
+        if self.useLocation:
+            ret = self.registerDataFrame(format=format)
+            ret = self.__checkConsistency()
         return ret
 
     def readImageFromPath(self, imagePath):
@@ -165,7 +169,7 @@ class MultiCameraTracking(object):
         imagePoints = []
         for idx, d in enumerate(trackers):
             bottomCenterX = (d[0] + d[2])/2.  # iamge coordinates
-            bottomCenterY = (d[1] + d[3])/2.  # image coordinates
+            bottomCenterY = d[3]  # image coordinates
             id = d[4]
             ids.append(id)
             imagePoints.append([bottomCenterX, bottomCenterY])

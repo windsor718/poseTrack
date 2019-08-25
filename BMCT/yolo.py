@@ -11,7 +11,7 @@ import cv2
 class YoloImage(object):
 
     def __init__(self):
-        self.modelDir = os.path.join(os.getcwd(), "singleCamera/yolo")
+        self.modelDir = os.path.join(os.getcwd(), "BMCT/yolo")
         self.inpWidth = 416
         self.inpHeight = 416
 

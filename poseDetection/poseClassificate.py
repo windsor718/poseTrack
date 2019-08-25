@@ -45,6 +45,31 @@ def getPose(imgPath, url="http://localhost:8000/api/posedetect"):
     return poses
 
 
+def getBoundingBoxes(poses):
+    boxes = [getBoundingBox(pose["keypoints"]) for pose in poses]
+    return boxes
+
+
+def getBoundingBox(keypoints, buffer=0.1):
+    pos = [[d["position"]["x"], d["position"]["y"]] for d in keypoints]
+    pos = np.array(pos).T
+    w = pos[0].max() - pos[0].min()
+    h = pos[1].max() - pos[1].min()
+    bbox = [pos[0].min() - w*buffer, pos[1].min() - h*buffer,
+            pos[0].max() + w*buffer, pos[1].max() - h+buffer]
+    return bbox
+
+
+def getFootPoint(bbox, keypoints):
+    parts = [d["part"] for d in keypoints]
+    if "rightAnkle" in parts or "leftAnkle" in parts:
+        x_bottom = (bbox[0] + bbox[1])/2
+        y_bottom = bbox[3]
+        return [x_bottom, y_bottom]
+    else:
+        return None
+
+
 def detect(angles, buffer=10):
     """
     detect pre-defined actions. higher wrapper.
@@ -83,7 +108,6 @@ def getAnglesTimeSequence(log, keypoints):
     """
     rescentPose = getAngles(keypoints)
     log.append(rescentPose)
-    print(log[-1])
     return log
 
 
@@ -280,4 +304,5 @@ def test():
         print(actions)
 
 
-test()
+if __name__ == "__main__":
+    test()

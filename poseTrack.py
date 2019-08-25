@@ -1,9 +1,12 @@
+import os
 import numpy as np
+import math
 import cv2
 import json
 import sqlite3
+import itertools
 from BMCT import bmct
-from poseDetection import poseclassificate as ps
+from poseDetection import poseClassificate as ps
 
 """
 Todo:
@@ -17,21 +20,28 @@ Todo:
 class PoseTrack(object):
 
     def __init__(self):
-        self.imgPathFmt = "./images/"
+        self.sceneBuffer = 10
+        self.imgPathFmt = os.path.join(os.getcwd(), "images/")
         self.tracker = bmct.MultiCameraTracking()
-        self.cameraList = ["PhysCamera001", "PhysCamera002"]
+        self.cameraList = ["camera001", "camera002"]
         self.dbName = "logs.db"
-        self.columns = "ID INTEGER, uID STRING, action STRING,\
-                        date STRING, sceneNumber INTEGER, priors STRING"
+        self.columns = "ID INTEGER, uID STRING, action STRING, \
+                        poseAngles STRING, date STRING, sceneNumber INTEGER, \
+                        PRIMARY KEY (date, sceneNumber)"
         self.placeHolder = "(?, ?, ?, ?, ?, ?)"
-        self.cacheFormat = "parquet"
+        # ${cameraName}_${id}_s${sceneNumber}_${date}.jpg
+        self.cacheImgFmt = "%s_%d_s%d_%s.jpg"
+        self.cacheDir = "./cache/"
+        if not os.path.exists(self.cacheDir):
+            os.makedirs(self.cacheDir)
+        self.cacheFormat = "parquet"  # only for location tracking
         con = sqlite3.connect(self.dbName)
         con.close()
 
     def initialize(self):
         self.tracker.initialize(self.cameraList, format=self.cacheFormat)
         for camera in self.cameraList:
-            self.createTable(camera, )
+            self.createTable(camera, self.columns)
 
     def createTable(self, tableName, tableContent):
         """
@@ -46,17 +56,18 @@ class PoseTrack(object):
         """
         con = sqlite3.connect(self.dbName)
         cursor = con.cursor()
-        command = "CREATE TABLE IF NOT EXISTS %s(%s)"
+        command = "CREATE TABLE IF NOT EXISTS %s(%s)"\
+                  % (tableName, tableContent)
         cursor.execute(command)
         con.commit()
         con.close()
 
-    def poseTrack(self, sceneNumber):
-        imagePointsList, idsList = self.__iterCameras(sceneNumber)
-        uniqueIdsByCameras = self.getSceneFromMultipleCameras(imagePointsList,
-                                                              idsList)
-        self.storeIdData(uniqueIdsByCameras)
-        return uniqueIdsByCameras
+    def poseTrack(self, sceneNumber, date):
+        imagePointsList, idsList = self.__iterCameras(sceneNumber, date)
+        #uniqueIdsByCameras = self.getSceneFromMultipleCameras(imagePointsList,
+        #                                                      idsList)
+        #self.storeIdData(uniqueIdsByCameras)
+        #return uniqueIdsByCameras
 
     def calcIOU(self, rec1, rec2):
         """
@@ -75,17 +86,37 @@ class PoseTrack(object):
             |                |
             |---------(x2, y2)
         """
-        area1 = (rec1[2] - rec1[0]) * (rec1[1] - rec1[3])
-        area2 = (rec2[2] - rec2[0]) * (rec2[1] - rec2[3])
-        ix1 = np.max(rec1[0], rec2[0])
-        iy1 = np.max(rec1[1], rec2[1])
-        ix2 = np.min(rec1[2], rec2[2])
-        iy2 = np.min(rec1[3], rec2[3])
+        area1 = (rec1[2] - rec1[0]) * (rec1[3] - rec1[1])
+        area2 = (rec2[2] - rec2[0]) * (rec2[3] - rec2[1])
+        ix1 = max(rec1[0], rec2[0])
+        iy1 = max(rec1[1], rec2[1])
+        ix2 = min(rec1[2], rec2[2])
+        iy2 = min(rec1[3], rec2[3])
         areai = (ix2 - ix1) * (iy2 - iy1)
-        iou = areai / (area1 + area2)
+        iou = areai / (area1 + area2 - areai)
         return iou
 
-    def getSceneFromSingleCamera(self, imgPath, cameraName):
+    def removeDoubleCount(self, boxes, threshold=0.85):
+        """
+        remove double counting of same person based on iou.
+        """
+        idxCombos = itertools.combinations(
+                    np.arange(0, len(boxes)).tolist(), 2
+                    )
+        idxOut = []
+        idxRemove = []
+        for c in idxCombos:
+            iou = self.calcIOU(np.array(boxes[c[0]]), np.array(boxes[c[1]]))
+            if iou > threshold:
+                idxOut.append(min(c))
+                idxRemove.append(max(c))
+            else:
+                [idxOut.append(ci) for ci in c]
+        #  dropduplicates
+        idxOut = [x for x in list(set(idxOut)) if x not in idxRemove]
+        return [boxes[idx] for idx in idxOut]
+
+    def getSceneFromSingleCamera(self, imgPath, cameraName, sceneNumber, date):
         """
         get a tracked-scene from single camera using YOLO/Kalman-tracker.
         Then integrate it with pose estimations by poseNet.
@@ -96,68 +127,116 @@ class PoseTrack(object):
             cameraName (str): unique camera name
 
         Returns:
-            list: coordinates on a image
-            list: id numbers
+            list: coordinates on a image (for location-based integration)
+            list: id numbers (for location-based integration)
         """
         # bmct side
-        sctInstance = self.cameraDict[cameraName]
+        sctInstance = self.tracker.cameraDict[cameraName]
         img = cv2.imread(imgPath)
         trackers = sctInstance.getScene(img)
         # poseNet side
         poses = ps.getPose(imgPath)
-        boxes = ps.getBoundingBoxes(poses)
-
+        boxes = self.removeDoubleCount(ps.getBoundingBoxes(poses))
         ids = []
         imagePoints = []
         for idx, d in enumerate(trackers):
             box_bmct = d[0:4]
             id = d[4]
+            outPath = os.path.join(self.cacheDir,
+                                   self.cacheImgFmt % (cameraName, id,
+                                                       sceneNumber, date))
+            self.writeImage(img, box_bmct, outPath)
             ious = []
             for box_pose in boxes:
                 iou = self.calcIOU(box_bmct, box_pose)
                 ious.append(iou)
             poseIdx = np.argmin(np.array(ious))
-            poseLog = self.getPoselog(id, cameraName)
+            sceneStart = max(0, sceneNumber - self.sceneBuffer)
+            sceneTail = sceneNumber
+            poseLog = self.getPoseLog(date, id, cameraName,
+                                      sceneStart, sceneTail)
             poseLog = ps.getAnglesTimeSequence(poseLog,
                                                poses[poseIdx]["keypoints"])
-            actions = ps.detect(poseLog)
-            ids.append(id)
-            imagePoints.append(ps.getFootPoint(poses[poseIdx]["keypoints"]))
-            self.storeActionData(actions)
+            actions = ps.detect(poseLog, buffer=self.sceneBuffer)
+            footPoint = ps.getFootPoint(box_bmct, poses[poseIdx]["keypoints"])
+            if footPoint is not None:
+                ids.append(id)
+                imagePoints.append(footPoint)
+            self.storeActionData(id, actions, cameraName,
+                                 poseLog[-1], date, sceneNumber)
         return ids, imagePoints
 
-    def storeActionData(self, id, actions, cameraName, date, sceneNumber):
+    def storeActionData(self, id, actions, cameraName,
+                        pose, date, sceneNumber):
         """
         store action data into database as JSON string format.
 
         Args:
+            id (int): camera-dependent id
             actions (dict): action dictionary {action:bool}
             cameraName (str): cameraName (table name)
+            date (str): date string
+            sceneNumber (int): scene number
 
         Returns:
             None
         """
         con = sqlite3.connect(self.dbName)
         cursor = con.cursor()
-        command = "INSERT INTO %s VALUES %s" % (cameraName, self.placeHolder)
+        command = "REPLACE INTO %s VALUES %s" % (cameraName, self.placeHolder)
         actions_str = json.dumps(actions)
-        date_str = date.strf("%Y-%m-%d-%H:%M")
-        holder = (id, "temp", actions_str, date_str, sceneNumber, "temp")
+        pose_str = json.dumps(pose)
+        holder = (id, "temp", actions_str, pose_str, date, sceneNumber)
         cursor.execute(command, holder)
         con.commit()
         con.close()
 
-    def __iterCameras(self, sceneNumber):
+    def getPoseLog(self, date, id, tableName, start, tail):
+        con = sqlite3.connect(self.dbName)
+        cursor = con.cursor()
+        command = "SELECT poseAngles FROM %s \
+                   WHERE id == %d AND date == \"%s\" \
+                   AND sceneNumber BETWEEN %d AND %d" \
+                   % (tableName, id, date, start, tail)
+        cursor.execute(command)
+        result = cursor.fetchall()
+        log = [json.loads(r[0]) for r in result]
+        return log
+
+    def __iterCameras(self, sceneNumber, date):
         idsList = []
         imagePointsList = []
         for cameraName in self.cameraList:
             path = self.getPath(sceneNumber, cameraName)
-            imagePoints, ids = self.getSceneFromSingleCamera(path, cameraName)
+            imagePoints, ids = self.getSceneFromSingleCamera(path, cameraName,
+                                                             sceneNumber, date)
             idsList.append(ids)
             imagePointsList.append(imagePoints)
         return imagePointsList, idsList
 
+    def getPath(self, sceneNumber, cameraName):
+            imgName = "%s/pickup_%03d.jpg" % (cameraName, sceneNumber)
+            imgPath = os.path.join(self.imgPathFmt, imgName)
+            return imgPath
+
+    def writeImage(self, img, bbox, path):
+        selImg = img[math.floor(bbox[1]):math.ceil(bbox[3]),
+                     math.floor(bbox[0]):math.ceil(bbox[2])]
+        cv2.imwrite(path, selImg)
+
     def getSceneFromMultipleCameras(self, imagePointsList, idsList):
+        """
+        Deprecated? For bmct location-based integration.
+        Pre-calibration is needed.
+        """
         uniqueIdsByCameras = self.tracker.multiCameraTracking(imagePointsList,
                                                               idsList)
         return uniqueIdsByCameras
+
+
+if __name__ == "__main__":
+    poseTracker = PoseTrack()
+    poseTracker.initialize()
+    date = "2019-8-18"
+    for i in range(0, 20):
+        poseTracker.poseTrack(i, date)
