@@ -77,5 +77,3 @@ PoseTrack.poseTrack()
 will return the dictionary of {CameraName:InCameraId:globalUniqueId}. globalUniqueId is unique over multiple cameras you registered.  
 This implementation will be deprecated in future commit for the efficiency. Data will only be stored in the database, not in the instance.  
 The result is stored in the SQLite database.   
-### future developments  
-- implement deep metric association.
