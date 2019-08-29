@@ -40,6 +40,7 @@ class SingleCameraTracking(object):
             list: detected bounding boxes' coordinates.
         """
         out, boxes = self.Yolo.yolo(frame)
+        cv2.imwrite("test.jpg", out)
         boxes = np.array(boxes)
         x1 = boxes[:, 0]
         y1 = boxes[:, 1]

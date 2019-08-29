@@ -11,7 +11,7 @@ import cv2
 class YoloImage(object):
 
     def __init__(self):
-        self.modelDir = os.path.join(os.getcwd(), "BMCT/yolo")
+        self.modelDir = os.path.join(os.getcwd(), "bmct/yolo")
         self.inpWidth = 416
         self.inpHeight = 416
 
@@ -135,4 +135,5 @@ class YoloImage(object):
         layerOutputs, H, W = self.predict(image)
         boxes, classIds, confidences = self.getBoundaryBox(layerOutputs, H, W)
         idxs = self.nonMaximaSupression(boxes, confidences)
-        return self.drawBox(image, boxes, idxs, classIds), boxes
+        supBoxes = [boxes[idx[0]] for idx in idxs]
+        return self.drawBox(image, boxes, idxs, classIds), supBoxes

@@ -53,7 +53,7 @@ def defineTransforms():
 
 
 def defineDataloaders(query_ids, query_paths, gallery_ids, gallery_paths,
-                      batch_size=256, shuffle=False, num_workers=16):
+                      batch_size=256, shuffle=False, num_workers=0):
     """
     define dataloader with pre-defined transform functions
     and IO modules (Dataset class).
@@ -69,7 +69,7 @@ def defineDataloaders(query_ids, query_paths, gallery_ids, gallery_paths,
                                                   batch_size=batch_size,
                                                   shuffle=shuffle,
                                                   num_workers=num_workers)
-                   for x in ["query, gallery"]}
+                   for x in ["query", "gallery"]}
     return dataloaders, image_datasets
 
 
@@ -88,7 +88,6 @@ def getScaleFromString(sScale):
     for s in str_ms:
         sf = float(s)
         ms.append(math.sqrt(sf))
-    print("Scales: %s" % str(ms))
     return ms
 
 
@@ -100,7 +99,6 @@ def extractFeature(model, dataloaders, config, scale="1"):
         img, label = data
         n, c, h, w = img.size()
         count += n
-        print(count)
         ff = torch.FloatTensor(n, 512).zero_().cuda()
         if config["PCB"]:
             ff = torch.FloatTensor(n, 2048, 6).zero_().cuda()
@@ -139,27 +137,27 @@ def loadNetwork(network, stateDictPath):
     return network
 
 
-def loadModel(modelName, config):
+def loadModel(modelName, config, stateDictPath):
     nclasses = config["nclasses"]
     if modelName == "densenet121":
         model_structure = ft_net_dense(nclasses)
     elif modelName == "NAS":
         model_structure = ft_net_NAS(nclasses)
-    elif modelName == "resNet50":
-        model_structure = ft_net(nclasses, config["stride"])
+    elif modelName == "ResNet50":
+        model_structure = ft_net(nclasses, stride=config["stride"])
     elif modelName == "PCB":
         model_structure = PCB(nclasses)
     else:
         raise KeyError("Undefined modelName, %s" % modelName)
 
-    return loadNetwork(model_structure)
+    return loadNetwork(model_structure, stateDictPath)
 
 
 def changeToEvalMode(model, modelname, usegpu=True):
     if modelname == "PCB":
         model = PCB_test(model)
     else:
-        model.classifer.classifer = nn.Sequential()
+        model.classifier.classifier = nn.Sequential()
 
     model = model.eval()
     if usegpu:
@@ -167,7 +165,7 @@ def changeToEvalMode(model, modelname, usegpu=True):
     return model
 
 
-def extractFeatureInBatch(model, dataloaders,
+def extractFeatureInBatch(model, dataloaders, config,
                           gallery_label, gallery_cam,
                           query_label, query_cam):
     """
@@ -175,8 +173,8 @@ def extractFeatureInBatch(model, dataloaders,
         Index order of each list and dataloaders must be identical.
     """
     with torch.no_grad():
-        gallery_feature = extractFeature(model, dataloaders["gallery"])
-        query_feature = extractFeature(model, dataloaders["query"])
+        gallery_feature = extractFeature(model, dataloaders["gallery"], config)
+        query_feature = extractFeature(model, dataloaders["query"], config)
     result = {"gallery_f": gallery_feature, "gallery_label": gallery_label,
               'gallery_cam': gallery_cam, 'query_f': query_feature,
               'query_label': query_label, 'query_cam': query_cam}
@@ -191,22 +189,25 @@ def calcScore(qf, gf):
 
 def calcPairwiseScores(gf):
     # cosine similarlity
-    score = np.dot(gf, gf.T)
-    print(score)
-    return score
+    similarityMatrix = np.dot(gf, torch.t(gf))
+    print(similarityMatrix)
+    return similarityMatrix
 
 
-def match(similarityMatrix, threshold=0.9):
+def match(similarityMatrix, ids, threshold=0.4):
     out = []
     for i in range(similarityMatrix.shape[0]):
-        cand_idx = np.where(similarityMatrix[i] > threshold)
-        matched = [i]
-        for idx in cand_idx:
-            max_idx = np.argmax(similarityMatrix[:, idx])
+        cand_idx = np.where(similarityMatrix[i, :] > threshold)[0]
+        print(cand_idx)
+        matched = [ids[i]]
+        for idx in set(cand_idx) - set([i]):
+            print(idx)
+            print(similarityMatrix[:, idx])
+            max_idx = np.argsort(similarityMatrix[:, idx])[-2]
             if max_idx == i:
-                matched.append(idx)
+                matched.append(ids[idx])
         out.append(matched)
-    return matched
+    return out
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -226,6 +227,9 @@ class Dataset(torch.utils.data.Dataset):
             data = self.transform(data)
         return data, label
 
+    def __len__(self):
+        return len(self.paths)
+
     def __readImg(self, path):
         from torchvision import get_image_backend
         if get_image_backend() == "accimage":
@@ -240,8 +244,8 @@ class Dataset(torch.utils.data.Dataset):
         except:
             return self.__pilLoader(path)
 
-    def __pilLoader(path):
-        with open(path) as stream:
+    def __pilLoader(self, path):
+        with open(path, "rb") as stream:
             img = Image.open(stream)
             return img.convert("RGB")
 
@@ -257,6 +261,9 @@ class DatasetCV(torch.utils.data.Dataset):
         self.ids = ids
         self.cvimgs = cvimgs
 
+    def __len__(self):
+        return len(self.cvimgs)
+
     def __getitem__(self, idx):
         data = self.__cv2pil(self.cvimgs[idx])
         label = self.ids[idx]
@@ -268,3 +275,47 @@ class DatasetCV(torch.utils.data.Dataset):
         cvimg = cv2.cvtColor(cvimg, cv2.COLOR_BGR2RGB)
         pilimg = Image.fromarray(cvimg).convert("RGB")
         return pilimg
+
+
+class Reidentify(object):
+    """
+    A higher API for re-identification. Edit if needed.
+    """
+
+    def __init__(self, modelName="ResNet50", usegpu=True, gpuids="0"):
+        self.modelName = modelName
+        self.usegpu = usegpu
+        self.gpuids = gpuids
+        self.epoch = 59  # which epoch
+        self.threshold = 0.4
+        cdir = os.getcwd()
+        if os.path.exists(os.path.join(cdir, "deepreid/model/ft_%s") % modelName):
+            self.configPath = os.path.join(cdir, "deepreid/model/ft_%s") % modelName
+        elif os.path.exists(os.path.join(cdir, "/model/ft_%s") % modelName):
+            self.configPath = os.path.join(cdir, "/model/ft_%s") % modelName
+        else:
+            raise IOError("A path model/ft_%s does not exist under current directory." % modelName)
+        self.stateDictPath = os.path.join(self.configPath, "net_%d.pth" % self.epoch)
+        print("Read configuration from: %s" % self.configPath)
+        self.config = loadConfig(self.configPath)
+        if usegpu:
+            setGPU(gpuids)
+        self.model = changeToEvalMode(loadModel(self.modelName, self.config, self.stateDictPath), self.modelName, usegpu=self.usegpu)
+
+    def getInfoFromID(self, ids):
+        info = [id.split("_") for id in ids]
+        info = np.array(info).T
+        camNames = info[0].tolist()
+        camids = info[1].tolist()
+        return camNames, camids
+
+    def reidentify(self, ids, paths):
+        camNames, camids = self.getInfoFromID(ids)
+        # full search among every detected person including same image
+        dataloaders, image_datasets = defineDataloaders(ids, paths, ids, paths)
+        # predict feature
+        result = extractFeatureInBatch(self.model, dataloaders, self.config, camids, camNames, camids, camNames)
+        # use pairwise score calculation as gf.shape == qf.shape.
+        similarityMatrix = calcPairwiseScores(result["gallery_f"])
+        matchedIDs = match(similarityMatrix, ids, threshold=self.threshold)
+        return matchedIDs

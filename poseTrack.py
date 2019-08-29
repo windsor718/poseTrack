@@ -5,8 +5,10 @@ import cv2
 import json
 import sqlite3
 import itertools
-from BMCT import bmct
-from poseDetection import poseClassificate as ps
+import glob
+from bmct import bmct
+from posedetection import poseClassificate as ps
+from deepreid import identify
 
 """
 Todo:
@@ -32,6 +34,7 @@ class PoseTrack(object):
         # ${cameraName}_${id}_s${sceneNumber}_${date}.jpg
         self.cacheImgFmt = "%s_%d_s%d_%s.jpg"
         self.cacheDir = "./cache/"
+        self.reidentifier = identify.Reidentify()
         if not os.path.exists(self.cacheDir):
             os.makedirs(self.cacheDir)
         self.cacheFormat = "parquet"  # only for location tracking
@@ -63,11 +66,8 @@ class PoseTrack(object):
         con.close()
 
     def poseTrack(self, sceneNumber, date):
-        imagePointsList, idsList = self.__iterCameras(sceneNumber, date)
-        #uniqueIdsByCameras = self.getSceneFromMultipleCameras(imagePointsList,
-        #                                                      idsList)
-        #self.storeIdData(uniqueIdsByCameras)
-        #return uniqueIdsByCameras
+        idsList, _ = self.__iterCameras(sceneNumber, date)
+        self.getSceneFromMultipleCameras(sceneNumber, date)
 
     def calcIOU(self, rec1, rec2):
         """
@@ -136,7 +136,7 @@ class PoseTrack(object):
         trackers = sctInstance.getScene(img)
         # poseNet side
         poses = ps.getPose(imgPath)
-        boxes = self.removeDoubleCount(ps.getBoundingBoxes(poses))
+        boxes = self.removeDoubleCount(ps.getBoundingBoxes(poses))  # replace with nonMaximaSup?
         ids = []
         imagePoints = []
         for idx, d in enumerate(trackers):
@@ -212,10 +212,10 @@ class PoseTrack(object):
                                                              sceneNumber, date)
             idsList.append(ids)
             imagePointsList.append(imagePoints)
-        return imagePointsList, idsList
+        return idsList, imagePointsList
 
     def getPath(self, sceneNumber, cameraName):
-            imgName = "%s/pickup_%03d.jpg" % (cameraName, sceneNumber)
+            imgName = "%s/%s_s%03d.jpg" % (cameraName, cameraName, sceneNumber)
             imgPath = os.path.join(self.imgPathFmt, imgName)
             return imgPath
 
@@ -224,15 +224,11 @@ class PoseTrack(object):
                      math.floor(bbox[0]):math.ceil(bbox[2])]
         cv2.imwrite(path, selImg)
 
-    def getSceneFromMultipleCameras(self, imagePointsList, idsList):
-        """
-        Deprecated? For bmct location-based integration.
-        Pre-calibration is needed.
-        """
-        uniqueIdsByCameras = self.tracker.multiCameraTracking(imagePointsList,
-                                                              idsList)
-        return uniqueIdsByCameras
-
+    def getSceneFromMultipleCameras(self, sceneNumber, date):
+        paths = glob.glob(os.path.join(self.cacheDir, "*_s%d_%s.jpg" % (sceneNumber, date)))
+        ids = [path.split("/")[-1].split("_")[0]+"_"+path.split("_")[1] for path in paths]
+        matchedIDs = self.reidentifier.reidentify(ids, paths)
+        print(matchedIDs)
 
 if __name__ == "__main__":
     poseTracker = PoseTrack()

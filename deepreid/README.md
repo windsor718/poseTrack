@@ -1,7 +1,7 @@
 # deepReID: Person Re-identification using Deep Learning Models.  
 ## Reference  
 A part of this work is referenced from https://github.com/layumi/Person_reID_baseline_pytorch, a great work by Zhedong Zheng from NVIDIA and UTS.  
-Their worl is published in:  
+Their work is published in CVPR:  
 ```
 @article{zheng2019joint,
   title={Joint discriminative and generative learning for person re-identification},
