@@ -2,7 +2,7 @@
 This code sets:  
 - tracks person from single camera with Kalman filtering.  
 - estimate poses of people on that image. Detect pre-defined actions.   
-- associate and integrate one scene from multiple cameras with Bayesian filtering.  
+- re-identificate people in one scene using ResNet50 or other models supported.  
 
 Each person on images will be associated with one global unique id over multiple cameras.  
 The ids, actions, frame numbers, and other associated information are stored into a RDB with sqlite3.  
@@ -13,9 +13,10 @@ Python
 - numpy  
 - pandas  
 - json  
-- filterpy  
+- filterpy 
 - scikit-learn  
-- Numba
+- Numba  
+- pytorch
 
 JavaScript  
 - Node.js  
@@ -25,11 +26,13 @@ JavaScript
 - express  
 - body-parser
 
+GPU environment  
+  
 Use conda/pip and npm to install these libraries.  
 ## Notes  
-Data association between cameras are done by estimating personal location on each image.  
-This estimation was based on look-up table (image coordinates - real coordinates), created by 3D CG model in Autodesk 3dsmax.  
-For general purposes, replace data association between cameras to metric-based algorithm.  
+Data association between cameras can also be done by estimating personal location on each image.  
+This estimation was based on calibrated look-up table (image coordinates - real coordinates), created by 3D CG model in Autodesk 3dsmax.  
+See BMCT/3dsmax for further description. Using both ImageNet-based models and camera calibration may lead higher accuracy.  
 
 ## Usage  
 See README in each directory for further information on the components.   
@@ -76,4 +79,3 @@ This implementation will be deprecated in future commit for the efficiency. Data
 The result is stored in the SQLite database.   
 ### future developments  
 - implement deep metric association.
-- efficient IO with SQLite
