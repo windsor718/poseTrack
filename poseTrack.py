@@ -6,16 +6,14 @@ import json
 import sqlite3
 import itertools
 import glob
+from multiprocessing import Pool
 from bmct import bmct
 from posedetection import poseClassificate as ps
 from deepreid import identify
 
 """
 Todo:
-    create database with sqlite3
-    implement database-related functions
-      - storeIdData()
-      - storeActionData()
+    multiprocessing
 """
 
 
@@ -213,6 +211,22 @@ class PoseTrack(object):
             idsList.append(ids)
             imagePointsList.append(imagePoints)
         return idsList, imagePointsList
+
+    def __iterCamerasMulti(self, sceneNumber, date, nProcess=8):
+        idsList = []
+        imagePointsList = []
+        argsList = [[sceneNumber, cameraName, date] for cameraName
+                   in self.cameraList]
+        with Pool(nProcess) as p:
+            result = p.map(self.__eachCamera, argsList)
+        result_t = zip(*result)
+        return result_t[0], result_t[1]
+
+    def __eachCameraForMulti(self, args):
+        path = self.getPath(args[0], args[1])
+        imagePoints, ids = self.getSceneFromSingleCamera(path, args[1],
+                                                         args[0], args[2])
+        return [ids, imagePoints]
 
     def getPath(self, sceneNumber, cameraName):
             imgName = "%s/%s_s%03d.jpg" % (cameraName, cameraName, sceneNumber)
