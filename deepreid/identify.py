@@ -190,7 +190,7 @@ def calcScore(qf, gf):
 def calcPairwiseScores(gf):
     # cosine similarlity
     similarityMatrix = np.dot(gf, torch.t(gf))
-    print(similarityMatrix)
+    #print(similarityMatrix)
     return similarityMatrix
 
 
@@ -198,11 +198,11 @@ def match(similarityMatrix, ids, threshold=0.4):
     out = []
     for i in range(similarityMatrix.shape[0]):
         cand_idx = np.where(similarityMatrix[i, :] > threshold)[0]
-        print(cand_idx)
+        #print(cand_idx)
         matched = [ids[i]]
         for idx in set(cand_idx) - set([i]):
-            print(idx)
-            print(similarityMatrix[:, idx])
+            #print(idx)
+            #print(similarityMatrix[:, idx])
             max_idx = np.argsort(similarityMatrix[:, idx])[-2]
             if max_idx == i:
                 matched.append(ids[idx])

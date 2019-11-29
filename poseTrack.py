@@ -64,7 +64,8 @@ class PoseTrack(object):
         con.close()
 
     def poseTrack(self, sceneNumber, date):
-        idsList, _ = self.__iterCameras(sceneNumber, date)
+        #idsList, _ = self.__iterCameras(sceneNumber, date)
+        idsList, _ = self.__iterCamerasMulti(sceneNumber, date, nProcess=4)
         self.getSceneFromMultipleCameras(sceneNumber, date)
 
     def calcIOU(self, rec1, rec2):
@@ -210,6 +211,7 @@ class PoseTrack(object):
                                                              sceneNumber, date)
             idsList.append(ids)
             imagePointsList.append(imagePoints)
+        print(idsList, imagePointsList)
         return idsList, imagePointsList
 
     def __iterCamerasMulti(self, sceneNumber, date, nProcess=8):
@@ -218,7 +220,7 @@ class PoseTrack(object):
         argsList = [[sceneNumber, cameraName, date] for cameraName
                    in self.cameraList]
         with Pool(nProcess) as p:
-            result = p.map(self.__eachCamera, argsList)
+            result = p.map(self.__eachCameraForMulti, argsList)
         result_t = zip(*result)
         return result_t[0], result_t[1]
 
@@ -242,7 +244,7 @@ class PoseTrack(object):
         paths = glob.glob(os.path.join(self.cacheDir, "*_s%d_%s.jpg" % (sceneNumber, date)))
         ids = [path.split("/")[-1].split("_")[0]+"_"+path.split("_")[1] for path in paths]
         matchedIDs = self.reidentifier.reidentify(ids, paths)
-        print(matchedIDs)
+        #print(matchedIDs)
 
 if __name__ == "__main__":
     poseTracker = PoseTrack()
