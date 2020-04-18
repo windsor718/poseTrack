@@ -20,13 +20,19 @@ Python
 
 JavaScript  
 - Node.js  
-- @tensorflow/tfjs-node  
+- @tensorflow/tfjs-node-gpu  
 - @tensorflow-models/posenet  
 - canvas  
 - express  
 - body-parser
 
-GPU environment  
+Note that `tfjs-node-gpu` only supports CUDA compute capability>=6.0.  
+Currently (Apr. 2020) `tfjs-node-gpu` supports CUDA=10.0, thus set up your environment with CUDA=10.0.  
+One of the successful build was:  
+- CUDA=10.0
+- cuDNN=7
+- pytorch=1.2
+- torchvision=0.4.2
   
 Use conda/pip and npm to install these libraries.  
 ## Notes  
