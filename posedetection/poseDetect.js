@@ -1,6 +1,6 @@
 const fs = require('fs')
 const util = require('util')
-const tf = require('@tensorflow/tfjs-node');
+const tf = require('@tensorflow/tfjs-node-gpu');
 const posenet = require('@tensorflow-models/posenet')
 const Canvas = require('canvas'),
     Image = Canvas.Image,
