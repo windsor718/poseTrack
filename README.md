@@ -33,6 +33,9 @@ One of the successful build was:
 - cuDNN=7
 - pytorch=1.2
 - torchvision=0.4.2
+- node=12.16.2
+- tensorflow-js=1.7.2
+- posenet=2.2.1
   
 Use conda/pip and npm to install these libraries.  
 ## Notes  
