@@ -1,4 +1,4 @@
-# tensorflow-js@1.2.4 only supports CUDA=10.0
+# tensorflow-js@1.7.2 only supports CUDA=10.0
 FROM pytorch/pytorch:1.2-cuda10.0-cudnn7-devel
 
 LABEL version="0.1"
